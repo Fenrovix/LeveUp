@@ -6,9 +6,12 @@ using Dalamud.Plugin;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.ComTypes;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using Lumina;
 using Lumina.Excel;
 using Lumina.Excel.GeneratedSheets;
 using Lumina.Text;
@@ -18,12 +21,14 @@ namespace SamplePlugin;
 
 public sealed class Plugin : IDalamudPlugin
 {
-    string logFile = @"F:\Code\FFXIV Plugins\log3.txt";
+    public string LogFile = @"F:\Code\FFXIV Plugins\log3.txt";
+    public string[] Jobs = ["CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"];
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static ITextureProvider TextureProvider { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
+    [PluginService] internal static IClientState ClientState { get; private set; } = null!; 
 
     private const string CommandName = "/lup";
     private const string ConfigCommandName = "/lupconfig";
@@ -34,12 +39,12 @@ public sealed class Plugin : IDalamudPlugin
     private ConfigWindow ConfigWindow { get; init; }
     private MainWindow MainWindow { get; init; }
 
-    public Dictionary<SeString, List<Leve>> Leves = new();
+    public Dictionary<string, List<Leve>> Leves = new();
 
     public ExcelSheet<CraftLeve> CraftLeves;
     public ExcelSheet<Item> Items;
     public ExcelSheet<RecipeLookup> RecipeLookups;
-    public ExcelSheet<Recipe> Recipes;
+    public ExcelSheet<ClassJob> ClassJobs;
 
     public Dictionary<(uint jobId, uint itemId), uint> RecipeMap = new();
 
@@ -70,19 +75,20 @@ public sealed class Plugin : IDalamudPlugin
 
         // Adds another button that is doing the same but for the main ui of the plugin
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUI;
+        
+        Initizlize();
+    }
 
+    private void Initizlize()
+    {
         CraftLeves = DataManager.GetExcelSheet<CraftLeve>()!;
         Items = DataManager.GetExcelSheet<Item>()!;
         RecipeLookups = DataManager.GetExcelSheet<RecipeLookup>()!;
-        Recipes = DataManager.GetExcelSheet<Recipe>()!;
-        GenerateDict();
+        ClassJobs = DataManager.GetExcelSheet<ClassJob>()!;
+        
+        foreach (var job in Jobs) Leves.TryAdd(job, []);
 
-        var text = "";
-        foreach (var i in RecipeLookups)
-        {
-            text += $"{i.ALC.Value.ItemResult.Value.RowId} | {i.ALC.Value.RowId}\n";
-        }
-        File.WriteAllText(logFile, text);
+        GenerateDicts();
     }
 
     public void Dispose()
@@ -106,8 +112,9 @@ public sealed class Plugin : IDalamudPlugin
     public void ToggleConfigUI() => ConfigWindow.Toggle();
     public void ToggleMainUI() => MainWindow.Toggle();
     
-    private void GenerateDict()
+    private void GenerateDicts()
     {
+        
         var leveSheet = DataManager.GameData.Excel.GetSheet<Leve>();
         for (uint i = 0; i < leveSheet.RowCount; i++)
         {
@@ -116,7 +123,7 @@ public sealed class Plugin : IDalamudPlugin
             if (jobId < 5 || jobId > 12) continue;
 
             var jobName = leve.ClassJobCategory.Value.Name;
-            if (!Leves.ContainsKey(jobName)) Leves.Add(jobName, new List<Leve>());
+            if(!Leves.ContainsKey(jobName)) Leves.Add(jobName, []);
             Leves[jobName].Add(leve);
 
             try
@@ -146,23 +153,15 @@ public sealed class Plugin : IDalamudPlugin
             _ => 0
         };
     }
-
+    
     public Item GetItem(int id)
     {
         return GetItem((uint)id);
     }
-
     public Item GetItem(uint id)
     {
         return Items.GetRow(id)!;
     }
-
-    public uint GetItemIdFromLeve(Leve leve)
-    {
-        var craft = CraftLeves.GetRow((uint)leve.DataId);
-        return (uint)craft!.UnkData3[0].Item;
-    }
-
     private (uint jobId, uint itemId) GetRecipeMapKey(Leve leve)
     {
         var craft = CraftLeves.GetRow((uint)leve.DataId);

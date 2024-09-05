@@ -2,10 +2,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Dalamud.Interface.Internal;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.Attributes;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
@@ -23,6 +25,7 @@ public class MainWindow : Window, IDisposable
     private readonly string[] tableHeaders = ["Name", "Level" ,"Location","Exp", "Item"];
     private readonly string[] expansions = ["A Realm Reborn", "Heavensward", "Stormblood", "Shadow Bringers", "End Walker", "Dawntrail"];
 
+    private int[] targetLevels;
     // We give this window a hidden ID using ##
     // So that the user will see "My Amazing Window" as window title,
     // but for ImGui the ID is "My Amazing Window##With a hidden ID"
@@ -36,6 +39,16 @@ public class MainWindow : Window, IDisposable
         };
         
         Plugin = plugin;
+
+        if (targetLevels == null)
+        {
+            targetLevels = new int[8];
+            unsafe
+            {
+                for (var i = 0; i < targetLevels.Length; i++)
+                    targetLevels[i] = UIState.Instance()->PlayerState.ClassJobLevels[i + 7];
+            } 
+        }
     }
 
     public void Dispose() { }
@@ -46,7 +59,7 @@ public class MainWindow : Window, IDisposable
         {
             var jobs = Plugin.Leves.Keys.ToArray();
             
-            foreach(var job in jobs) CreateTab(job);
+            for(var i = 0; i < jobs.Length; i++) CreateTab(jobs[i], i);
 
             ImGui.EndTabBar();
         }
@@ -54,40 +67,69 @@ public class MainWindow : Window, IDisposable
         ImGui.End();
     }
 
-    private void CreateTab(SeString job)
+    private void CreateTab(string job, int index)
     {
         if (ImGui.BeginTabItem(job))
         {
-            // Begin a child window for scrollable content
-            ImGui.BeginChild("TabContent", new Vector2(0, 0), false, ImGuiWindowFlags.AlwaysVerticalScrollbar);
+            ImGui.BeginChild("TabContent", new Vector2(0, 0), false, ImGuiWindowFlags.NoScrollbar);
             
+            LeveCalculator(job, index);
             LeveCollapsableMenu(job);
-
-            // End the child window
+            
             ImGui.EndChild();
             ImGui.EndTabItem();
         }
     }
 
-    private void LeveCalculator(SeString job)
+    private void LeveCalculator(string job, int index)
     {
-        
+        var jobExpIndex = index + 7; //CPR starts at 7
+        if(ImGui.BeginChild("Calculator", new Vector2(ImGui.GetWindowWidth(), 100)))
+        {
+            if(ImGui.BeginTable("", 2))
+            {
+                var lvl = 0;
+                var exp = 0;
+                unsafe
+                {
+                    var playerState = UIState.Instance()->PlayerState;
+                    lvl = playerState.ClassJobLevels[jobExpIndex];
+                    exp = playerState.ClassJobExperience[jobExpIndex];
+                }
+                ImGui.TableNextColumn();
+                ImGui.Text($"Level: {lvl}       Exp: {exp:N0}");
+                ImGui.SetCursorPosY(ImGui.GetCursorPosY() + 10);
+                ImGui.Text("Target Level: ");
+                ImGui.SetNextItemWidth(85);
+                ImGui.InputInt("", ref targetLevels[index]);
+                if (targetLevels[index] < lvl) targetLevels[index] = lvl;
+                else if (targetLevels[index] > 100) targetLevels[index] = 100;
+                ImGui.TableNextColumn();
+                ImGui.Text("Test");
+                ImGui.EndTable();
+            }
+            ImGui.EndChild();
+        }
     }
 
-    private void LeveCollapsableMenu(SeString job)
+    private void LeveCollapsableMenu(string job)
     {
         if (ImGui.CollapsingHeader("Leve List"))
         {
-            var index = 0;
-            var expansionCap = 50;
-            foreach (var expansion in expansions)
+            if(ImGui.BeginChild("Table", new Vector2(0, 0), false, ImGuiWindowFlags.AlwaysVerticalScrollbar))
             {
-                ImGui.Spacing();
-                CreateTitleBar(expansion);
+                var index = 0;
+                var expansionCap = 50;
+                foreach (var expansion in expansions)
                 {
-                    index = CreateTable(Plugin.Leves[job], index, expansionCap);
-                    expansionCap += 10;
+                    ImGui.Spacing();
+                    CreateTitleBar(expansion);
+                    {
+                        index = CreateTable(Plugin.Leves[job], index, expansionCap);
+                        expansionCap += 10;
+                    }
                 }
+                ImGui.EndChild();
             }
         }
     }
