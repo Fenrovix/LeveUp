@@ -44,7 +44,7 @@ public sealed class Plugin : IDalamudPlugin
     public ExcelSheet<CraftLeve> CraftLeves;
     public ExcelSheet<Item> Items;
     public ExcelSheet<RecipeLookup> RecipeLookups;
-    public ExcelSheet<ClassJob> ClassJobs;
+    public ExcelSheet<ParamGrow> ParamGrows;
 
     public Dictionary<(uint jobId, uint itemId), uint> RecipeMap = new();
 
@@ -84,9 +84,12 @@ public sealed class Plugin : IDalamudPlugin
         CraftLeves = DataManager.GetExcelSheet<CraftLeve>()!;
         Items = DataManager.GetExcelSheet<Item>()!;
         RecipeLookups = DataManager.GetExcelSheet<RecipeLookup>()!;
-        ClassJobs = DataManager.GetExcelSheet<ClassJob>()!;
+        ParamGrows = DataManager.GetExcelSheet<ParamGrow>()!;
+        
         
         foreach (var job in Jobs) Leves.TryAdd(job, []);
+        
+        
 
         GenerateDicts();
     }
