@@ -22,7 +22,7 @@ namespace SamplePlugin;
 
 public sealed class Plugin : IDalamudPlugin
 {
-    public string LogFile = @"H:\Code\log3.txt";
+    public string LogFile = @"F:\Code\FFXIV Plugins\log3.txt";
     public string[] Jobs = ["CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"];
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static ITextureProvider TextureProvider { get; private set; } = null!;
@@ -30,6 +30,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
     [PluginService] internal static IClientState ClientState { get; private set; } = null!; 
+    [PluginService] internal static IGameGui GameGui { get; private set; } = null!;
 
     private const string CommandName = "/lup";
     private const string ConfigCommandName = "/lupconfig";
@@ -96,9 +97,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             Leves.Add(job, new List<Leve>[6]);
             for (var i = 0; i < Leves[job].Length; i++) Leves[job][i] = new List<Leve>();
-        }   
-        
-        
+        }
 
         GenerateDicts();
         

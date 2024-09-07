@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Interface.Internal;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
+using Dalamud.Utility;
 using FFXIVClientStructs.Attributes;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
@@ -24,7 +26,7 @@ public class MainWindow : Window, IDisposable
 {
     
     private Plugin Plugin;
-    private readonly string[] tableHeaders = ["Name", "Level" ,"Location","Exp", "Item"];
+    private readonly string[] tableHeaders = ["Name", "Level", "Location", "Exp", "Gil", "Item"];
     private readonly string[] expansions = ["A Realm Reborn", "Heavensward", "Stormblood", "Shadow Bringers", "End Walker", "Dawntrail"];
 
     private int[] previousLevels;
@@ -33,7 +35,7 @@ public class MainWindow : Window, IDisposable
     private Vector2 minSize = new (717, 200);
     private Vector2 minSizeX = new(float.MaxValue, 200);
     private Vector2 resizeableSize = new(float.MaxValue, float.MaxValue);
-    private float expandedHieght = 600;
+    private float expandedHeight = 600;
     private bool firstLoad = true;
 
     private Leve suggestedLeve;
@@ -67,6 +69,8 @@ public class MainWindow : Window, IDisposable
 
     public void Dispose() { }
 
+    private float xfloat = 0;
+    private float yfloat = 0;
     public override void Draw()
     {
         if (ImGui.BeginTabBar("JobBar", ImGuiTabBarFlags.FittingPolicyMask))
@@ -80,10 +84,10 @@ public class MainWindow : Window, IDisposable
 
         if (resize)
         {
-            ImGui.SetWindowSize(new Vector2(ImGui.GetWindowWidth(), expandedHieght));
+            ImGui.SetWindowSize(new Vector2(ImGui.GetWindowWidth(), expandedHeight));
             resize = false;
         }
-        else expandedHieght = ImGui.GetWindowHeight();
+        else expandedHeight = ImGui.GetWindowHeight();
 
         ImGui.End();
     }
@@ -185,7 +189,7 @@ public class MainWindow : Window, IDisposable
             drawRow: DrawRow,                                       
             flags: ImGuiTableFlags.Borders | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable 
                    | ImGuiTableFlags.RowBg | ImGuiTableFlags.Hideable,  
-            columnTitles: new []{"Name", "Level", "Location", "Exp", "Item"}                              
+            columnTitles: tableHeaders                            
         );
     }
     
@@ -193,13 +197,13 @@ public class MainWindow : Window, IDisposable
     {
         DrawCell(leve.Name);
         DrawCell(leve.ClassJobLevel.ToString());
-        DrawCell(leve.PlaceNameStartZone.Value.Name, true, leve);
+        DrawCell(leve.PlaceNameIssued.Value.Name, true, leve);
         DrawCell(leve.ExpReward.ToString("N0"));
+        DrawCell(leve.GilReward.ToString("N0"));
         var craft = Plugin.CraftLeves.GetRow((uint)leve.DataId);
         var objective = craft.UnkData3[0];
         var itemCount = objective.ItemCount > 1 ? 'x' + objective.ItemCount.ToString() : "";
         DrawCell($"{Plugin.GetItem(objective.Item).Name} {itemCount}", true, leve, objective);
-        var test = new ENpcResident();
         
     }
     
@@ -228,45 +232,25 @@ public class MainWindow : Window, IDisposable
             {
                 ImGui.GetWindowDrawList().AddRectFilled(min, max, ImGui.ColorConvertFloat4ToU32(new Vector4(1.0f, 1.0f, 1.0f, 0.4f)));
                 var column = ImGui.TableGetColumnIndex();
-                if (column == 3)
+                switch (column)
                 {
-                    unsafe
+                    case 2:
                     {
-                        //AgentMap.Instance()->OpenMapByMapId();
+                        var level = leve.LevelLevemete.Value;
+                        var coords = MapUtil.WorldToMap(new Vector3(level.X, level.Y, level.Z), level.Map.Value.OffsetX, level.Map.Value.OffsetY, 0, level.Map.Value.SizeFactor);
+                        var payload = new MapLinkPayload(level.Territory.Value.RowId, level.Map.Value.RowId, coords.X, coords.Y);
+                        Plugin.GameGui.OpenMapWithMapLink(payload);
+                        break;
                     }
-                }
-                else if (column == 4)
-                {
-                    unsafe
-                    {
-                        var recipe = Plugin.RecipeMap[(leve.LeveAssignmentType.Value.RowId, (uint)objective.Item)];
-                        AgentRecipeNote.Instance()->OpenRecipeByRecipeId(recipe);
-                    }
-                }
-            }
-        }
-    }
+                    case 5:
+                        unsafe
+                        {
+                            var recipe = Plugin.RecipeMap[(leve.LeveAssignmentType.Value.RowId, (uint)objective.Item)];
+                            AgentRecipeNote.Instance()->OpenRecipeByRecipeId(recipe);
+                        }
 
-    private void CreateTableRow(Leve leve)
-    {
-        ImGui.TableNextColumn();
-        ImGui.Text(leve.Name);
-        ImGui.TableNextColumn();
-        ImGui.Text(leve.ClassJobLevel.ToString());
-        ImGui.TableNextColumn();
-        ImGui.Text(leve.PlaceNameStart.Value.Name);
-        ImGui.TableNextColumn();
-        ImGui.Text(leve.ExpReward.ToString("N0"));
-        ImGui.TableNextColumn();
-        var craft = Plugin.CraftLeves.GetRow((uint)leve.DataId);
-        var objective = craft.UnkData3[0];
-        var itemCount = objective.ItemCount > 1 ? 'x' + objective.ItemCount.ToString() : "";
-        if (ImGui.Button($"{Plugin.GetItem(objective.Item).Name} {itemCount}"))
-        {
-            unsafe
-            {
-                var recipe = Plugin.RecipeMap[(leve.LeveAssignmentType.Value.RowId, (uint)objective.Item)];
-                AgentRecipeNote.Instance()->OpenRecipeByRecipeId(recipe);
+                        break;
+                }
             }
         }
     }
