@@ -16,12 +16,13 @@ using Lumina.Excel;
 using Lumina.Excel.GeneratedSheets;
 using Lumina.Text;
 using SamplePlugin.Windows;
+using Map = Lumina.Excel.GeneratedSheets.Map;
 
 namespace SamplePlugin;
 
 public sealed class Plugin : IDalamudPlugin
 {
-    public string LogFile = @"F:\Code\FFXIV Plugins\log3.txt";
+    public string LogFile = @"H:\Code\log3.txt";
     public string[] Jobs = ["CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"];
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static ITextureProvider TextureProvider { get; private set; } = null!;
@@ -39,17 +40,20 @@ public sealed class Plugin : IDalamudPlugin
     private ConfigWindow ConfigWindow { get; init; }
     private MainWindow MainWindow { get; init; }
 
-    public Dictionary<string, List<Leve>> Leves = new();
+    public Dictionary<string, List<Leve>[]> Leves = new();
 
     public ExcelSheet<CraftLeve> CraftLeves;
     public ExcelSheet<Item> Items;
     public ExcelSheet<RecipeLookup> RecipeLookups;
+    public ExcelSheet<Aetheryte> Aetherytes;
     public ExcelSheet<ParamGrow> ParamGrows;
+    
 
     public Dictionary<(uint jobId, uint itemId), uint> RecipeMap = new();
 
     public Plugin()
     {
+        
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
         ConfigWindow = new ConfigWindow(this);
@@ -76,22 +80,34 @@ public sealed class Plugin : IDalamudPlugin
         // Adds another button that is doing the same but for the main ui of the plugin
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUI;
         
-        Initizlize();
+        initialize();
     }
 
-    private void Initizlize()
+    private void initialize()
     {
         CraftLeves = DataManager.GetExcelSheet<CraftLeve>()!;
         Items = DataManager.GetExcelSheet<Item>()!;
         RecipeLookups = DataManager.GetExcelSheet<RecipeLookup>()!;
+        Aetherytes = DataManager.GetExcelSheet<Aetheryte>()!;
         ParamGrows = DataManager.GetExcelSheet<ParamGrow>()!;
         
-        
-        foreach (var job in Jobs) Leves.TryAdd(job, []);
+
+        foreach (var job in Jobs)
+        {
+            Leves.Add(job, new List<Leve>[6]);
+            for (var i = 0; i < Leves[job].Length; i++) Leves[job][i] = new List<Leve>();
+        }   
         
         
 
         GenerateDicts();
+        
+        var text = "";
+        foreach (var map in Aetherytes)
+        {
+            text += $"{map.RowId} | {map.Map.Value.PlaceName.Value.Name} | {map.PlaceName.Value.Name}\n";
+        }
+        File.WriteAllText(LogFile, text);
     }
 
     public void Dispose()
@@ -127,10 +143,11 @@ public sealed class Plugin : IDalamudPlugin
 
             var jobName = leve.ClassJobCategory.Value.Name;
             if(!Leves.ContainsKey(jobName)) Leves.Add(jobName, []);
-            Leves[jobName].Add(leve);
+            
 
             try
             {
+                Leves[jobName][ExpansionIndex(leve.ClassJobLevel)].Add(leve);
                 var key = GetRecipeMapKey(leve);
                 var recipeId = GetRecipeId(jobName, key.itemId);
                 RecipeMap.TryAdd(key, recipeId);
@@ -169,5 +186,10 @@ public sealed class Plugin : IDalamudPlugin
     {
         var craft = CraftLeves.GetRow((uint)leve.DataId);
         return (leve.LeveAssignmentType.Value!.RowId, (uint)craft!.UnkData3[0].Item);
+    }
+
+    private int ExpansionIndex(ushort level)
+    {
+        return Math.Max((level / 10) - 4, 0);
     }
 }
