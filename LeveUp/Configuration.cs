@@ -1,8 +1,6 @@
 ﻿using Dalamud.Configuration;
-using Dalamud.Plugin;
-using System;
 
-namespace SamplePlugin;
+namespace LeveUp;
 
 [Serializable]
 public class Configuration : IPluginConfiguration

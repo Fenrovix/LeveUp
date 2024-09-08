@@ -1,9 +1,7 @@
-﻿using System;
-using System.Numerics;
-using Dalamud.Interface.Windowing;
+﻿using Dalamud.Interface.Windowing;
 using ImGuiNET;
 
-namespace SamplePlugin.Windows;
+namespace LeveUp.Windows;
 
 public class ConfigWindow : Window, IDisposable
 {
