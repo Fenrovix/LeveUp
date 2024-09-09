@@ -1,43 +1,54 @@
 ﻿using Dalamud.Game.Text.SeStringHandling.Payloads;
-using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using ImGuiNET;
 using Lumina.Excel.GeneratedSheets;
+using OtterGui;
+using OtterGui.Raii;
+using ImGuiTable = Dalamud.Interface.Utility.ImGuiTable;
+using Map = Lumina.Excel.GeneratedSheets.Map;
+using Timer = System.Timers.Timer;
 
 namespace LeveUp.Windows;
 
 public unsafe class MainWindow : Window, IDisposable
 {
-    
-    private Plugin Plugin;
-    private readonly string[] tableHeaders = ["Name", "Level", "Location", "Exp", "Gil", "Item"];
+    private readonly string[] tableHeaders = ["Name", "Level", "Location", "Exp", "Item"];
     private readonly string[] expansions = ["A Realm Reborn", "Heavensward", "Stormblood", "Shadow Bringers", "End Walker", "Dawntrail"];
     
-    private int[] targetLevels;
+    private readonly int[] targetLevels;
 
-    private Vector2 minSize = new (717, 215);
-    private Vector2 minSizeX = new(float.MaxValue, 215);
-    private Vector2 resizeableSize = new(float.MaxValue, float.MaxValue);
+    private readonly Vector2 minSize = new (717, 230);
+    private readonly Vector2 minSizeX = new(float.MaxValue, 230);
+    private readonly Vector2 resizeableSize = new(float.MaxValue, float.MaxValue);
     private float expandedHeight = 600;
     
 
     private bool resize;
     private readonly PlayerState* playerState;
     private readonly CalculatorData[] calculatorData;
-    
-    
+
+    private Leve? clickedLeve;
+    private int clickedIndex;
+    private bool popupOpened;
+
+    private readonly Timer mouseClickTimer;
+    private bool menuClickDelay;
+    private bool largeLeves;
+
+    private int index;
+    private int JobIndex => index + 7;
+
+    private bool isSuggestedTable;
     // We give this window a hidden ID using ##
     // So that the user will see "My Amazing Window" as window title,
     // but for ImGui the ID is "My Amazing Window##With a hidden ID"
-    public MainWindow(Plugin plugin)
-        : base("Leve Up!##With a hidden ID", ImGuiWindowFlags.None)
+    public MainWindow()
+        : base("Leve Up!##MainWindow", ImGuiWindowFlags.None)
     {
         SetSizeConstraints(minSizeX);
-        
-        Plugin = plugin;
         
         playerState = PlayerState.Instance();
         
@@ -50,6 +61,13 @@ public unsafe class MainWindow : Window, IDisposable
         
         calculatorData = new CalculatorData[8];
         for (var i = 0; i < calculatorData.Length; i++) calculatorData[i] = new CalculatorData(playerState, i);
+
+        mouseClickTimer = new Timer(120);
+        mouseClickTimer.AutoReset = false;
+        mouseClickTimer.Elapsed += (sender, args) =>
+        {
+            menuClickDelay = false;
+        }; 
     }
 
     public void Dispose() { }
@@ -59,8 +77,7 @@ public unsafe class MainWindow : Window, IDisposable
         if (ImGui.BeginTabBar("JobBar", ImGuiTabBarFlags.FittingPolicyMask))
         {
             var jobs = Data.Leves.Keys.ToArray();
-            
-            for(var i = 0; i < jobs.Length; i++) CreateTab(jobs[i], i);
+            for(index = 0; index < jobs.Length; index++) CreateTab(jobs[index]);
 
             ImGui.EndTabBar();
         }
@@ -71,80 +88,104 @@ public unsafe class MainWindow : Window, IDisposable
             resize = false;
         }
         else expandedHeight = ImGui.GetWindowHeight();
-
+        
+        DrawLeveReplacementPopup();
         ImGui.End();
     }
-    private void CreateTab(string job, int index)
+    private void CreateTab(string job)
     {
-        var jobIndex = index + 7;
         if (ImGui.BeginTabItem(job))
         {
             ImGui.BeginChild("TabContent", new Vector2(0, 0), false, ImGuiWindowFlags.NoScrollbar);
-            if (playerState->ClassJobLevels[jobIndex] == 0)
-            {
-                ImGui.Text("Unlock Job First");
-            }
-            else
-            {
-                LeveCalculator(job, index);
-                LeveCollapsableMenu(job, index);
-            }
+            
+            LeveCalculator();
+            
+            LeveCollapsableMenu(job);
             
             ImGui.EndChild();
             ImGui.EndTabItem();
         }
     }
     
-    private void LeveCalculator(string job, int index)
+    private void LeveCalculator()
     {
-        var jobIndex = index + 7;
-        if(ImGui.BeginChild("Calculator", new Vector2(ImGui.GetWindowWidth(), 120)))
+        if(ImGui.BeginChild("Calculator", new Vector2(ImGui.GetWindowWidth(), 135), false, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
         {
-            if (SizeConstraints!.Value.MaximumSize == minSizeX)
+            if (playerState->ClassJobLevels[JobIndex] == 0)
             {
-                resize = true;
-                SetSizeConstraints(resizeableSize);
+                if (ImGui.Button("Unlock Job"))
+                    Plugin.GameGui.OpenMapWithMapLink(Data.GuildReceptionists[index]);
             }
-            if(ImGui.BeginTable("Stats", 1))
+            else
             {
-                calculatorData[index].CheckTargetLevel(targetLevels[index]);
+                if (SizeConstraints!.Value.MaximumSize == minSizeX)
+                {
+                    resize = true;
+                    SetSizeConstraints(resizeableSize);
+                }
 
-                ImGui.TableNextColumn();
-                ImGui.Text(calculatorData[index].LevelExpLabel);
-                ImGui.SameLine();
-                //ImGui.SetCursorPosY(ImGui.GetCursorPosY() + 10);
-                ImGui.Text("Target Level:");
-                //ImGui.SetCursorPos(new Vector2(85, ImGui.GetCursorPosY() - 23));
-                ImGui.SameLine();
-                ImGui.SetNextItemWidth(100);
-                ImGui.InputInt("", ref targetLevels[index]);
-                if (targetLevels[index] < playerState->ClassJobLevels[jobIndex])
-                    targetLevels[index] = playerState->ClassJobLevels[jobIndex];
-                else if (targetLevels[index] > 100) 
-                    targetLevels[index] = 100;
-                ImGui.SameLine();
-                SetLineSpacing(20);
-                ImGui.Text(calculatorData[index].TotalExpLabel);
-                //ImGui.Text("Suggested Leve: " + (calculatorData[index].SuggestedLeve?.Name ?? ""));
-                ImGui.EndTable();
-            }
+                if (ImGui.BeginTable("Stats", 1))
+                {
+                    calculatorData[index].CheckTargetLevel(targetLevels[index]);
 
-            if (calculatorData[index].SuggestedLeve[0] != null)
-            {
-                SetSpacing(5);
-                CreateTable(calculatorData[index].SuggestedLeve);
-                SetSpacing(10);
-                ImGui.Text(calculatorData[index].HighQualityTurnInLabel);
-                ImGui.SameLine();
-                SetLineSpacing(50);
-                ImGui.Text(calculatorData[index].NormalQualityTurnInLabel);
+                    ImGui.TableNextColumn();
+                    ImGui.Text(calculatorData[index].LevelExpLabel);
+                    ImGui.SameLine();
+                    SetLineSpacing(5);
+                    ImGui.Text("Target Level:");
+                    ImGui.SameLine();
+                    ImGui.SetNextItemWidth(100);
+                    ImGui.InputInt("", ref targetLevels[index]);
+                    var addLevel = playerState->ClassJobLevels[JobIndex] == 100 ? 0 : 1;
+                    targetLevels[index] = Math.Clamp(targetLevels[index], playerState->ClassJobLevels[JobIndex]+addLevel, 100);
+                    ImGui.SameLine();
+                    SetLineSpacing(15);
+                    ImGui.Text(calculatorData[index].TotalExpLabel);
+                    ImGui.EndTable();
+                }
+
+                if (calculatorData[index].SuggestedLeve[0] != null)
+                {
+                    SetSpacing(5);
+                    CreateTable(calculatorData[index].SuggestedLeve, true);
+                    SetSpacing(10);
+
+                    if (ImGui.BeginTable("", 3))
+                    {
+                        ImGui.TableNextColumn();
+                        ImGui.Text(calculatorData[index].HighQualityTurnInLabel);
+                        ImGui.Text(calculatorData[index].NormalQualityTurnInLabel);
+
+                        ImGui.TableNextColumn();
+                        
+                        if (calculatorData[index].LeveOverriden)
+                        {
+                            if (ImGui.Button("Reset Suggested Leve")) calculatorData[index].RemoveSuggestedLeveOverride();
+                        }
+
+                        ImGui.TableNextColumn();
+                        if(ImGui.Checkbox("Use Large Leves?", ref largeLeves))
+                        {
+                            calculatorData[0].SetLargeLeve(largeLeves);
+                        }
+                        if (ImGui.IsItemHovered())
+                        {
+                            ImGui.BeginTooltip();
+                            ImGui.Text("Large Leves use 10 leve Allowances\n" +
+                                       "(Not Recommended)");
+                            ImGui.EndTooltip();
+                        }
+                        ImGui.EndTable();
+                    }
+                }
             }
-            
+            SetSpacing(5);
+            ImGui.Separator();
             ImGui.EndChild();
         }
     }
 
-    private void LeveCollapsableMenu(string job, int index)
+    private void LeveCollapsableMenu(string job)
     {
         if (ImGui.CollapsingHeader("Leve List"))
         {
@@ -155,7 +196,7 @@ public unsafe class MainWindow : Window, IDisposable
                 {
                     SetSpacing(5);
                     CreateTitleBar(expansions[i]);
-                    CreateTable(Data.Leves[job][i]);
+                    CreateTable(Data.Leves[job][i], false);
                 }
                 ImGui.EndChild();
             }
@@ -166,10 +207,11 @@ public unsafe class MainWindow : Window, IDisposable
         }
     }
 
-    private void CreateTable(IEnumerable<Leve?> leves)
+    private void CreateTable(IEnumerable<Leve?> leves, bool suggestedTable)
     {
+        isSuggestedTable = suggestedTable;
         ImGuiTable.DrawTable(
-            label: "MyTable",
+            label: "",
             data: leves,                                            
             drawRow: DrawRow,                                       
             flags: ImGuiTableFlags.Borders | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable 
@@ -180,30 +222,28 @@ public unsafe class MainWindow : Window, IDisposable
     
     private void DrawRow(Leve? leve)
     {
-        DrawCell(leve.Name);
-        DrawCell(leve.ClassJobLevel.ToString());
-        DrawCell(leve.PlaceNameIssued.Value.Name, true, leve);
-        DrawCell(leve.ExpReward.ToString("N0"));
-        DrawCell(leve.GilReward.ToString("N0"));
+        DrawCell(leve.Name, leve, true);
+        DrawCell(leve.ClassJobLevel.ToString(), leve);
+        DrawCell(leve.PlaceNameIssued.Value.Name, leve, true);
+        DrawCell(leve.ExpReward.ToString("N0"), leve);
         var craft = Data.CraftLeves.GetRow((uint)leve.DataId);
         var objective = craft.UnkData3[0];
         var itemCount = objective.ItemCount > 1 ? 'x' + objective.ItemCount.ToString() : "";
-        DrawCell($"{Data.GetItem(objective.Item).Name} {itemCount}", true, leve, objective);
-        
+        DrawCell($"{Data.GetItem(objective.Item).Name} {itemCount}", leve, true, objective);
     }
     
-    private void DrawCell(string content, bool highlight = false, Leve? leve = null, CraftLeve.CraftLeveUnkData3Obj? objective = null)
+    private void DrawCell(string content, Leve? leve, bool highlight = false, CraftLeve.CraftLeveUnkData3Obj? objective = null)
     {
         ImGui.TableNextColumn();
         ImGui.Text(content);
-
-        if(!highlight) return;
+        var column = ImGui.TableGetColumnIndex();
+        if((isSuggestedTable && column == 0) || menuClickDelay || !highlight || popupOpened) return;
         
         var itemMin = ImGui.GetItemRectMin();
         var padding = ImGui.GetStyle().CellPadding;
         
         var min = itemMin - padding;
-        var max = ImGui.GetItemRectMax() with {X = itemMin.X + ImGui.GetColumnWidth()} + (padding);
+        var max = ImGui.GetItemRectMax() with {X = itemMin.X + ImGui.GetColumnWidth()} + padding;
         
         if (ImGui.IsMouseHoveringRect(min, max))
         {
@@ -212,13 +252,18 @@ public unsafe class MainWindow : Window, IDisposable
             {
                 ImGui.GetWindowDrawList().AddRectFilled(min, max, ImGui.ColorConvertFloat4ToU32(new Vector4(7.0f, 7.0f, 7.0f, 0.4f)));
             }
-
+            
             if (ImGui.IsMouseReleased(ImGuiMouseButton.Left))
             {
                 ImGui.GetWindowDrawList().AddRectFilled(min, max, ImGui.ColorConvertFloat4ToU32(new Vector4(1.0f, 1.0f, 1.0f, 0.4f)));
-                var column = ImGui.TableGetColumnIndex();
                 switch (column)
                 {
+                    case 0:
+                    {
+                        clickedLeve = leve;
+                        clickedIndex = index;
+                        break;
+                    }
                     case 2:
                     {
                         var level = leve.LevelLevemete.Value;
@@ -227,13 +272,39 @@ public unsafe class MainWindow : Window, IDisposable
                         Plugin.GameGui.OpenMapWithMapLink(payload);
                         break;
                     }
-                    case 5:
+                    case 4:
                         var recipe = Data.RecipeMap[(leve.LeveAssignmentType.Value.RowId, (uint)objective.Item)];
                         AgentRecipeNote.Instance()->OpenRecipeByRecipeId(recipe);
 
                         break;
                 }
             }
+        }
+    }
+
+    private void DrawLeveReplacementPopup()
+    {
+        if(clickedLeve != null && !popupOpened) ImGui.OpenPopup("ReplacementPopup");
+        if(ImGui.BeginPopup("ReplacementPopup"))
+        {
+            popupOpened = true;
+            menuClickDelay = true;
+            OtterGui.ImGuiUtil.Center($"Replace suggested leve with:\n{clickedLeve.Name}?");
+            if (ImGui.Button("Yes"))
+            {
+                calculatorData[clickedIndex].OverrideSuggestedLeve(clickedLeve);
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("No")) ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+        }
+
+        if (!ImGui.IsPopupOpen("ReplacementPopup") && (clickedLeve != null || popupOpened))
+        {
+            mouseClickTimer.Start();
+            clickedLeve = null;
+            popupOpened = false;
         }
     }
     

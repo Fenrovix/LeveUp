@@ -1,14 +1,24 @@
 ﻿
 
+using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Lumina.Excel;
 using Lumina.Excel.GeneratedSheets;
+using Quest = Lumina.Excel.GeneratedSheets2.Quest;
 
 namespace LeveUp;
 
 public static class Data
 {
-    public const string LogFile = @"H:\Code\log3.txt";
     public static readonly string[] Jobs = ["CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"];
+
+    public static readonly MapLinkPayload[] GuildReceptionists =
+    {
+        new (132, 2, 10.8f, 12.1f), new (128, 11, 10.2f, 15f),
+        new (128, 11, 10.2f, 15f), new (131, 14, 10.5f, 13.2f),
+        new (133, 3, 12.5f, 8.3f), new (131, 14, 13.9f, 13.2f),
+        new (131, 73, 8.9f, 13.6f), new (128, 11, 10f, 8f)
+    };
+
     
     public static Dictionary<string, List<Leve>[]> Leves = new();
     public static Dictionary<(uint jobId, uint itemId), uint> RecipeMap = new();
@@ -25,13 +35,12 @@ public static class Data
         RecipeLookups = Plugin.DataManager.GetExcelSheet<RecipeLookup>()!;
         ParamGrows = Plugin.DataManager.GetExcelSheet<ParamGrow>()!;
         
-
         foreach (var job in Jobs)
         {
             Leves.Add(job, new List<Leve>[6]);
             for (var i = 0; i < Leves[job].Length; i++) Leves[job][i] = new List<Leve>();
         }
-
+        
         GenerateDictionaries();
     }
     
@@ -48,7 +57,6 @@ public static class Data
             var jobName = leve.ClassJobCategory.Value.Name;
             if(!Leves.ContainsKey(jobName)) Leves.Add(jobName, []);
             
-
             try
             {
                 Leves[jobName][ExpansionIndex(leve.ClassJobLevel)].Add(leve);

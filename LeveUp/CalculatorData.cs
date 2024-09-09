@@ -8,12 +8,11 @@ public unsafe class CalculatorData(PlayerState* playerState, int jobIndex)
     // public properties
     public bool LargeLeves { get; set; } = false;
     public Leve?[] SuggestedLeve { get; private set; } = [null];
+    public bool LeveOverriden { get; private set; }
     
     // private properties
     private int TargetLevel { get; set; }
     private int TotalExpNeeded { get; set; }
-    
-
    
     // Read only properties
     private PlayerState* PlayerState { get; } = playerState;
@@ -38,7 +37,7 @@ public unsafe class CalculatorData(PlayerState* playerState, int jobIndex)
 
     private void Calculate()
     {
-        if (Level == TargetLevel)
+        if (Level == TargetLevel && !LeveOverriden)
         {
             TotalExpNeeded = 0;
             SuggestedLeve[0] = null;
@@ -50,6 +49,7 @@ public unsafe class CalculatorData(PlayerState* playerState, int jobIndex)
                 TotalExpNeeded += Data.ParamGrows.GetRow(i).ExpToNext;
             TotalExpNeeded -= CurrentLevelExp;
 
+            if(LeveOverriden) return;
             var bestExp = 0u;
             foreach (var expansion in Data.Leves[Job])
             {
@@ -65,14 +65,30 @@ public unsafe class CalculatorData(PlayerState* playerState, int jobIndex)
             }
         }
     }
-    
-    
+
+    public void OverrideSuggestedLeve(Leve leve)
+    {
+        SuggestedLeve[0] = leve;
+        LeveOverriden = true;
+    }
+
+    public void RemoveSuggestedLeveOverride()
+    {
+        LeveOverriden = false;
+        Calculate();
+    }
+
+    public void SetLargeLeve(bool largeLeve)
+    {
+        LargeLeves = largeLeve;
+        Calculate();
+    }
     
     public string LevelExpLabel => 
         $"[ Level: {Level} ] [ {CurrentLevelExp:N0}/{NextLevelExpNeeded:N0}  ({(float)CurrentLevelExp/NextLevelExpNeeded:P}%) ]";
 
-    public string TotalExpLabel => $"Total Exp Needed: {TotalExpNeeded:N0}";
+    public string TotalExpLabel => $"Total Exp Needed: {Math.Clamp(TotalExpNeeded, 0, float.MaxValue):N0}";
     
-    public string NormalQualityTurnInLabel => $"Turn in Normal Quality Leve: {MathF.Ceiling((float)TotalExpNeeded/SuggestedLeve[0].ExpReward)}x times";
-    public string HighQualityTurnInLabel => $"Turn in High Quality Leve: {MathF.Ceiling((float)TotalExpNeeded/SuggestedLeve[0].ExpReward / 2)}x times";
+    public string NormalQualityTurnInLabel => $"Turn in NQ Leve: {Math.Clamp(MathF.Ceiling((float)TotalExpNeeded/SuggestedLeve[0].ExpReward), 0, float.MaxValue):N0}x times";
+    public string HighQualityTurnInLabel => $"Turn in HQ Leve: {Math.Clamp(MathF.Ceiling((float)TotalExpNeeded/SuggestedLeve[0].ExpReward / 2), 0, float.MaxValue):N0}x times";
 }
