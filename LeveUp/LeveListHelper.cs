@@ -60,7 +60,7 @@ public static class LeveListHelper
     private static void CreateLeveTable(IEnumerable<Leve?> leves)
     {
         ImGuiTable.DrawTable(
-            label: "",
+            label: "test",
             data: leves,                                            
             drawRow: DrawLeveRow,                                       
             flags: ImGuiTableFlags.Borders | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable 
@@ -83,9 +83,10 @@ public static class LeveListHelper
     
     private static void DrawLeveCell(string content, Leve? leve, bool highlight = false, CraftLeve.CraftLeveUnkData3Obj? objective = null)
     {
+        var column = ImGui.TableGetColumnIndex();
         ImGui.TableNextColumn();
         ImGui.Text(content);
-        var column = ImGui.TableGetColumnIndex();
+        
         if(MenuClickDelay || !highlight || PopupOpened) return;
         
         var itemMin = ImGui.GetItemRectMin();

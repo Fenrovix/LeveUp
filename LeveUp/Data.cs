@@ -2,6 +2,7 @@
 
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using Lumina.Excel;
 using Lumina.Excel.GeneratedSheets;
 using Quest = Lumina.Excel.GeneratedSheets2.Quest;
@@ -16,6 +17,7 @@ public static unsafe class Data
     public static Span<short> PlayerClassJobLeves => PlayerStateCached->ClassJobLevels;
     public static int PlayerJobLevel(int jobIndex) => PlayerStateCached->ClassJobLevels[jobIndex]; 
     public static int PlayerJobExperience(int jobIndex) => PlayerStateCached->ClassJobExperience[jobIndex];
+    public static int ExpToNextLevel(int level) => ParamGrows!.GetRow((ushort)level)!.ExpToNext;
     
     public static Dictionary<string, Dictionary<int, (Leve? normal, Leve? large)>> BestLeves = new();
     public static readonly string[] Jobs = ["CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"];

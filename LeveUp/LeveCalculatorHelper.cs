@@ -5,6 +5,8 @@ using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using ImGuiNET;
 using LeveUp.Windows;
 using Lumina.Excel.GeneratedSheets;
+using OtterGui.Raii;
+using OtterGui.Table;
 
 namespace LeveUp;
 
@@ -12,6 +14,7 @@ public static class LeveCalculatorHelper
 {
     public static MainWindow MainWindow;
     
+
     private static readonly string[] TableHeaders = ["Name", "Level", "Location", "Exp", "Item", "NQ Attempts", "HQ Attempts"];
 
     public static void DrawLeveCalculator()
@@ -48,16 +51,17 @@ public static class LeveCalculatorHelper
 
     private static void DrawTable(IEnumerable<(Leve? leve, int nq, int hq)> leves)
     {
-        ImGuiTable.DrawTable(
+        
+        ImGuiHelper.DrawTable(
             label: "",
-            data: leves,                                            
+            data: leves, 
             drawRow: DrawLeveRow,                                       
-            flags: ImGuiTableFlags.Borders | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable 
-                   | ImGuiTableFlags.RowBg | ImGuiTableFlags.Hideable,  
-            columnTitles: TableHeaders                            
+            flags: ImGuiTableFlags.Borders | ImGuiTableFlags.Resizable | 
+                   ImGuiTableFlags.RowBg | ImGuiTableFlags.Hideable, 
+            columnTitles: TableHeaders
         );
     }
-
+    
     private static void DrawLeveRow((Leve? leve, int nq, int hq) leveData)
     {
         var leve = leveData.leve;

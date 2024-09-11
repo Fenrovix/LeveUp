@@ -1,4 +1,5 @@
 ﻿using ImGuiNET;
+using OtterGui.Raii;
 
 namespace LeveUp;
 
@@ -28,5 +29,41 @@ public static class ImGuiHelper
     public static void SetLineSpacing(float spacing)
     {
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + spacing);
+    }
+    
+    //Based off OtterGui
+    public static void DrawTable<T>(string label, IEnumerable<T> data, Action<T> drawRow, ImGuiTableFlags flags = ImGuiTableFlags.None,
+                                    params string[] columnTitles)
+    {
+        if (columnTitles.Length == 0)
+            return;
+
+        // Initialize the table with the provided flags
+        if (ImGui.BeginTable(label, columnTitles.Length, flags))
+        {
+            // Setup columns based on columnTitles
+            for (int i = 0; i < columnTitles.Length; i++)
+            {
+                var columnFlags = ImGuiTableColumnFlags.None;
+
+                // Add default sorting to the first column as an example
+                if (i == 0)
+                    columnFlags |= ImGuiTableColumnFlags.DefaultSort;
+
+                ImGui.TableSetupColumn(columnTitles[i], columnFlags);
+            }
+
+            // Finalize the setup with headers
+            ImGui.TableHeadersRow();
+
+            // Draw rows based on the provided data and drawRow method
+            foreach (var datum in data)
+            {
+                ImGui.TableNextRow();
+                drawRow(datum);
+            }
+
+            ImGui.EndTable();
+        }
     }
 }
