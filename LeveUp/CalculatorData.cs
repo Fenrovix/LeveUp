@@ -1,13 +1,13 @@
 ﻿using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using LeveUp.Windows;
 using Lumina.Excel.GeneratedSheets;
 
 namespace LeveUp;
 
-public unsafe class CalculatorData(PlayerState* playerState, int jobIndex)
+public class CalculatorData(int index)
 {
     // public properties
-    public bool LargeLeves { get; set; } = false;
-    public Leve?[] SuggestedLeve { get; private set; } = [null];
+    public List<(Leve? leve, int nq, int hq)> LeveTable { get; private set; } = new();
     public bool LeveOverriden { get; private set; }
     
     // private properties
@@ -15,80 +15,70 @@ public unsafe class CalculatorData(PlayerState* playerState, int jobIndex)
     private int TotalExpNeeded { get; set; }
    
     // Read only properties
-    private PlayerState* PlayerState { get; } = playerState;
-    private string Job { get; } = Data.Jobs[jobIndex];
-    private int JobIndexOffset { get; } = jobIndex + 7;  // 7 is where CRP starts in param list
+    private string Job { get; } = Data.Jobs[index];
+    private int JobIndex { get; } = index + 7;  // 7 is where CRP starts in param list
     
-    private int Level => PlayerState->ClassJobLevels[JobIndexOffset];
+
     private int currentLevelExpCached;
-    private int CurrentLevelExp => PlayerState->ClassJobExperience[JobIndexOffset];
-    private int NextLevelExpNeeded => Data.ParamGrows!.GetRow((uint)Level)!.ExpToNext;
+    private int NextLevelExpNeeded => Data.ParamGrows!.GetRow((uint)Data.PlayerJobLevel(JobIndex))!.ExpToNext;
     
 
     public void CheckTargetLevel(int targetLevel)
     {
-        if (targetLevel != TargetLevel || currentLevelExpCached != CurrentLevelExp)
+        if (targetLevel != TargetLevel || currentLevelExpCached != Data.PlayerJobExperience(JobIndex))
         {
-            currentLevelExpCached = CurrentLevelExp;
+            currentLevelExpCached = Data.PlayerJobExperience(JobIndex);
             TargetLevel = targetLevel;
             Calculate();   
         }
     }
 
-    private void Calculate()
+    public void Calculate()
     {
-        if (Level == TargetLevel && !LeveOverriden)
-        {
-            TotalExpNeeded = 0;
-            SuggestedLeve[0] = null;
-        }
-        else
-        {
-            TotalExpNeeded = 0;
-            for (var i = (uint)Level; i < TargetLevel; i++)
-                TotalExpNeeded += Data.ParamGrows.GetRow(i).ExpToNext;
-            TotalExpNeeded -= CurrentLevelExp;
+        if(Configuration.Automatic) CalculateAutomatic();
+    }
 
-            if(LeveOverriden) return;
-            var bestExp = 0u;
-            foreach (var expansion in Data.Leves[Job])
+    private void CalculateAutomatic()
+    {
+        LeveTable.Clear();
+        TotalExpNeeded = 0;
+        var currentLevel = Data.PlayerJobLevel(JobIndex);
+        for (var level = currentLevel; level < TargetLevel; level++)
+        {
+            var expToNext = Data.ParamGrows.GetRow((ushort)level).ExpToNext;
+            if (level == currentLevel) expToNext -= Data.PlayerJobExperience(JobIndex);
+
+            var levePair = Data.BestLeves[Job][GetLevelKey(level)];
+            var selectedLeve = Configuration.LargeLeves && levePair.large != null ? levePair.large : levePair.normal;
+            
+            var nq = (int)MathF.Ceiling((float)expToNext / selectedLeve.ExpReward);
+            var hq = (int)MathF.Ceiling((float)expToNext / (selectedLeve.ExpReward * 2));
+
+            if (LeveTable.Count > 0 && LeveTable[^1].leve.DataId == selectedLeve.DataId)
             {
-                foreach (var leve in expansion)
-                {
-                    if(leve.Name.ToString().Contains("(L)") && !LargeLeves) continue;
-                    if (leve.ClassJobLevel <= Level && leve.ExpReward > bestExp)
-                    {
-                        SuggestedLeve[0] = leve;
-                        bestExp = leve.ExpReward;
-                    }
-                }
+                var lastLeve = LeveTable[^1];
+                LeveTable[^1] = (lastLeve.leve, lastLeve.nq + nq, lastLeve.hq + hq);
             }
+            else LeveTable.Add((selectedLeve, nq, hq));
+
+            TotalExpNeeded += expToNext;
         }
     }
-
-    public void OverrideSuggestedLeve(Leve leve)
+    
+    private static int GetLevelKey(int level)
     {
-        SuggestedLeve[0] = leve;
-        LeveOverriden = true;
-    }
-
-    public void RemoveSuggestedLeveOverride()
-    {
-        LeveOverriden = false;
-        Calculate();
-    }
-
-    public void SetLargeLeve(bool largeLeve)
-    {
-        LargeLeves = largeLeve;
-        Calculate();
+        if (level < 5) return 1;
+        return level <= 50
+                   ? level / 5 * 5  // For levels <= 50, clamp down to nearest multiple of 5
+                   : level / 2 * 2; // For levels > 50, clamp down to even number
     }
     
     public string LevelExpLabel => 
-        $"[ Level: {Level} ] [ {CurrentLevelExp:N0}/{NextLevelExpNeeded:N0}  ({(float)CurrentLevelExp/NextLevelExpNeeded:P}%) ]";
+        $"[ Level: {Data.PlayerJobLevel(JobIndex)} ] [ {Data.PlayerJobExperience(JobIndex):N0}/{NextLevelExpNeeded:N0}" +
+        $"  ({(float)Data.PlayerJobExperience(JobIndex)/NextLevelExpNeeded:P}%) ]";
 
     public string TotalExpLabel => $"Total Exp Needed: {Math.Clamp(TotalExpNeeded, 0, float.MaxValue):N0}";
     
-    public string NormalQualityTurnInLabel => $"Turn in NQ Leve: {Math.Clamp(MathF.Ceiling((float)TotalExpNeeded/SuggestedLeve[0].ExpReward), 0, float.MaxValue):N0}x times";
-    public string HighQualityTurnInLabel => $"Turn in HQ Leve: {Math.Clamp(MathF.Ceiling((float)TotalExpNeeded/SuggestedLeve[0].ExpReward / 2), 0, float.MaxValue):N0}x times";
+    //public string NormalQualityTurnInLabel => $"{Math.Clamp(MathF.Ceiling((float)TotalExpNeeded/SuggestedLeves[0].ExpReward), 0, float.MaxValue):N0}x";
+    //public string HighQualityTurnInLabel => $"{Math.Clamp(MathF.Ceiling((float)TotalExpNeeded/SuggestedLeves[0].ExpReward / 2), 0, float.MaxValue):N0}x";
 }

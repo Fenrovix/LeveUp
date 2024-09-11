@@ -1,14 +1,23 @@
 ﻿
 
 using Dalamud.Game.Text.SeStringHandling.Payloads;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using Lumina.Excel;
 using Lumina.Excel.GeneratedSheets;
 using Quest = Lumina.Excel.GeneratedSheets2.Quest;
 
 namespace LeveUp;
 
-public static class Data
+public static unsafe class Data
 {
+    public static int[] TargetLevels;
+    public static PlayerState* PlayerStateCached;
+    public static CalculatorData[] Calculations;
+    public static Span<short> PlayerClassJobLeves => PlayerStateCached->ClassJobLevels;
+    public static int PlayerJobLevel(int jobIndex) => PlayerStateCached->ClassJobLevels[jobIndex]; 
+    public static int PlayerJobExperience(int jobIndex) => PlayerStateCached->ClassJobExperience[jobIndex];
+    
+    public static Dictionary<string, Dictionary<int, (Leve? normal, Leve? large)>> BestLeves = new();
     public static readonly string[] Jobs = ["CRP", "BSM", "ARM", "GSM", "LTW", "WVR", "ALC", "CUL"];
 
     public static readonly MapLinkPayload[] GuildReceptionists =
@@ -30,23 +39,102 @@ public static class Data
     
     public static void Initialize()
     {
+        GenerateExcelSheets();
+        GenerateDictionaries();
+        InitializeCalculatorData();
+        PrecomputeBestLeves();
+    }
+
+    private static void GenerateExcelSheets()
+    {
         CraftLeves = Plugin.DataManager.GetExcelSheet<CraftLeve>()!;
         Items = Plugin.DataManager.GetExcelSheet<Item>()!;
         RecipeLookups = Plugin.DataManager.GetExcelSheet<RecipeLookup>()!;
         ParamGrows = Plugin.DataManager.GetExcelSheet<ParamGrow>()!;
+    }
+
+    private static void InitializeCalculatorData()
+    {
+        PlayerStateCached = PlayerState.Instance();
         
+        TargetLevels = new int[8];
+        for (var i = 0; i < TargetLevels.Length; i++)
+            TargetLevels[i] = PlayerStateCached->ClassJobLevels[i + 7];
+        
+        Calculations = new CalculatorData[8];
+        for (var i = 0; i < Calculations.Length; i++) Calculations[i] = new CalculatorData(i);
+    }
+
+    private static void PrecomputeBestLeves()
+    {
+        foreach (var job in Jobs)
+        {
+            // Initialize the dictionary for storing best Leves for each level
+            BestLeves.Add(job, new Dictionary<int, (Leve? normal, Leve? large)>());
+            
+            // Flatten all Leves into a single list
+            var allLeves = Leves[job].SelectMany(l => l).ToList();
+
+            // Group Leves by ClassJobLevel
+            var levesByLevel = allLeves.GroupBy(l => (int)l.ClassJobLevel)
+                                       .ToDictionary(g => g.Key, g => g.ToList());
+            
+            // Initialize variables to store the best Leves found so far
+            Leve? bestNormalLeveSoFar = null;
+            Leve? bestLargeLeveSoFar = null;
+
+            // Iterate over levels from 1 to 98
+            for (var level = 1; level <= 98;)
+            {
+                // Try to get the Leves for the current level
+                if (levesByLevel.TryGetValue(level, out var currentLevelLeves))
+                {
+                    foreach (var leve in currentLevelLeves)
+                    {
+                        // Check the AllowanceCost and determine the best normal and large Leves
+                        switch (leve.AllowanceCost)
+                        {
+                            case 1:
+                                if (bestNormalLeveSoFar == null || leve.ExpReward > bestNormalLeveSoFar.ExpReward)
+                                    bestNormalLeveSoFar = leve;
+                                break;
+                            case 10:
+                                if (bestLargeLeveSoFar == null || leve.ExpReward > bestLargeLeveSoFar.ExpReward)
+                                    bestLargeLeveSoFar = leve;
+                                break;
+                        }
+                    }
+                }
+
+                // Store the best Leve for this level
+                BestLeves[job].Add(level, (bestNormalLeveSoFar, bestLargeLeveSoFar));
+
+                // Adjust the level increment based on the pattern described
+                switch (level)
+                {
+                    case 1:
+                        level = 5;
+                        break;
+                    case < 50:
+                        level += 5;
+                        break;
+                    default:
+                        level += 2;
+                        break;
+                }
+            }
+        }
+    }
+
+
+
+    private static void GenerateDictionaries()
+    {
         foreach (var job in Jobs)
         {
             Leves.Add(job, new List<Leve>[6]);
             for (var i = 0; i < Leves[job].Length; i++) Leves[job][i] = new List<Leve>();
-        }
-        
-        GenerateDictionaries();
-    }
-    
-    private static void GenerateDictionaries()
-    {
-        
+        }       
         var leveSheet = Plugin.DataManager.GameData.Excel.GetSheet<Leve>();
         for (uint i = 0; i < leveSheet.RowCount; i++)
         {

@@ -1,11 +1,12 @@
 ﻿using Dalamud.Interface.Windowing;
 using ImGuiNET;
+using Lumina.Excel.GeneratedSheets;
 
 namespace LeveUp.Windows;
 
 public class ConfigWindow : Window, IDisposable
 {
-    private Configuration Configuration;
+    private static Configuration Configuration;
 
     // We give this window a constant ID using ###
     // This allows for labels being dynamic, like "{FPS Counter}fps###XYZ counter window",
@@ -26,32 +27,51 @@ public class ConfigWindow : Window, IDisposable
     public override void PreDraw()
     {
         // Flags must be added or removed before Draw() is being called, or they won't apply
-        if (Configuration.IsConfigWindowMovable)
-        {
-            Flags &= ~ImGuiWindowFlags.NoMove;
-        }
-        else
-        {
-            Flags |= ImGuiWindowFlags.NoMove;
-        }
     }
 
     public override void Draw()
     {
-        // can't ref a property, so use a local copy
-        var configValue = Configuration.SomePropertyToBeSavedAndWithADefault;
-        if (ImGui.Checkbox("Random Config Bool", ref configValue))
-        {
-            Configuration.SomePropertyToBeSavedAndWithADefault = configValue;
-            // can save immediately on change, if you don't want to provide a "Save and Close" button
-            Configuration.Save();
-        }
+        DrawAutomatic();
+        DrawSingleLeveMode();
+        DrawLargeLeves();
+    }
 
-        var movable = Configuration.IsConfigWindowMovable;
-        if (ImGui.Checkbox("Movable Config Window", ref movable))
+    public static void DrawAutomatic()
+    {
+        var automatic = Configuration.Automatic;
+        if (ImGui.Checkbox("Automatic", ref automatic))
         {
-            Configuration.IsConfigWindowMovable = movable;
+            ImGui.BeginTooltip();
+            ImGui.Text("Automatically build a leve todo list based on target level");
+            ImGui.EndTooltip();
+            Configuration.Automatic = automatic;
             Configuration.Save();
         }
+    }
+
+    public static void DrawSingleLeveMode()
+    {
+        var singleLeveMode = Configuration.SingleLeveMode;
+        if (ImGui.Checkbox("Single Leve Mode", ref singleLeveMode))
+        {
+            ImGui.BeginTooltip();
+            ImGui.Text("Find the best leve at current level\n(Nice if you want to bulk craft one item)");
+            ImGui.EndTooltip();
+            Configuration.SingleLeveMode = singleLeveMode;
+            Configuration.Save();
+        }
+    }
+
+    public static void DrawLargeLeves()
+    {
+        var largeLeves  = Configuration.LargeLeves;
+        if (ImGui.Checkbox("Large Leves", ref largeLeves))
+        {
+            ImGui.BeginTooltip();
+            ImGui.Text("Enables Large Leves for Automatic. Large Leves use 10 allowances\n(Not Recommended)");
+            ImGui.EndTooltip();
+            Configuration.LargeLeves = largeLeves;
+            Configuration.Save();
+        }       
     }
 }
